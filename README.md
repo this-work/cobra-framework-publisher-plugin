@@ -1,0 +1,1 @@
+# cobra-framework-publisher-plugin
