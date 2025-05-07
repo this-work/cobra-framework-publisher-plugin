@@ -1,0 +1,29 @@
+{
+    "name": "@this/cobra-framework-publisher-plugin",
+    "version": "1.0.0",
+    "author": "THIS GmbH",
+    "repository": "https://github.com/this-work/cobra-framework-publisher-plugin/src/master/README.md",
+    "description": "Nuxt module for a publish process. Requires a minimal version of nuxt 2.17+",
+    "main": "./src/module.js",
+    "keywords": [
+        "scss",
+        "vue",
+        "nuxt",
+        "cobra",
+        "js",
+        "search",
+        "scorm",
+        "plugin",
+        "framework"
+    ],
+    "license": "MIT",
+    "files": [
+        "src"
+    ],
+    "dependencies": {
+        "consola": "^3.4.2",
+        "fs-extra": "^11.3.0",
+        "node-fetch": "^3.3.2",
+        "path": "^0.12.7"
+    }
+}
