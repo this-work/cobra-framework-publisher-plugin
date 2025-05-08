@@ -34,13 +34,15 @@ export default async function(moduleOptions) {
 
         }
 
-        this.nuxt.hook('generate:page', async ({path, html}) => {
+        this.nuxt.hook('generate:page', async ({route, html}) => {
 
-            await AssetLoader.collectAssets(path, html);
+            await AssetLoader.collectPageAssets(route, html);
 
         });
 
-        this.nuxt.hook("generate:done", (generator, errors) => {
+        this.nuxt.hook("generate:done", async (generator, errors) => {
+
+            await AssetLoader.downloadAssets(route, html);
 
             if (errors.length > 0) {
 
