@@ -42,7 +42,7 @@ export default async function(moduleOptions) {
 
         this.nuxt.hook("generate:done", async (generator, errors) => {
 
-            await AssetLoader.downloadAssets(route, html);
+            await AssetLoader.downloadAssets();
 
             if (errors.length > 0) {
 

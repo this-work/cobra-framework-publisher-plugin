@@ -22,7 +22,7 @@ export default class Exporter {
         let matchedStrings;
         while ((matchedStrings = getAssetPathsRegex.exec(html)) !== null) {
 
-            const trimmedMatchedStrings = matchedStrings[0].replaceAll('"', '');
+            const trimmedMatchedStrings = matchedStrings[0].replaceAll('"', '').replaceAll(',', ' ');
 
             if (trimmedMatchedStrings.includes(' ')) {
 
@@ -54,9 +54,9 @@ export default class Exporter {
 
             let downloadedAssets = 0;
             const totalAssetCount = this.assetList.length;
-            const progressInterval = Math.ceil(totalAssetCount * 0.05); // 5% of total
+            const progressInterval = Math.ceil(totalAssetCount * 0.05);
 
-            await Promise.all(this.assetList.map(async asset => {
+            for (const [index, asset] of this.assetList.entries()) {
 
                 const splittedAssetArray = asset.split('/');
                 const assetName = splittedAssetArray.pop();
@@ -67,29 +67,28 @@ export default class Exporter {
                     this.assetDestination + assetPath,
                 ), { recursive: true })
 
-                return await fetch(this.api + asset).then(res => {
-                    return new Promise((resolve, reject) => {
-                        const writeStream = fs.createWriteStream(path.join(
-                            process.env.PWD,
-                            this.assetDestination + assetPath,
-                            assetName
-                        ));
+                const response = await fetch(this.api + asset);
 
-                        res.body.pipe(writeStream);
+                await new Promise((resolve, reject) => {
+                    const writeStream = fs.createWriteStream(path.join(
+                        process.env.PWD,
+                        this.assetDestination + assetPath,
+                        assetName
+                    ));
 
-                        writeStream.on('finish', () => {
-                            downloadedAssets++;
-                            if (downloadedAssets % progressInterval === 0 || downloadedAssets === totalAssetCount) {
-                                const percentage = Math.round((downloadedAssets / totalAssetCount) * 100);
-                                consola.info(`Downloaded ${percentage}% of all assets (${downloadedAssets}/${totalAssetCount})`);
-                            }
-                            resolve();
-                        });
-                        writeStream.on('error', reject);
+                    response.body.pipe(writeStream);
+
+                    writeStream.on('finish', () => {
+                        downloadedAssets++;
+                        if (downloadedAssets % progressInterval === 0 || downloadedAssets === totalAssetCount) {
+                            const percentage = Math.round((downloadedAssets / totalAssetCount) * 100);
+                            consola.info(`Downloaded ${percentage}% of all assets (${downloadedAssets}/${totalAssetCount})`);
+                        }
+                        resolve();
                     });
+                    writeStream.on('error', reject);
                 });
-
-            }));
+            }
 
             consola.success(`Downloaded all ${this.assetList.length} assets"`);
 
