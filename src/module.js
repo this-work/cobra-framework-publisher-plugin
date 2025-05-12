@@ -29,20 +29,19 @@ export default async function(moduleOptions) {
 
             AssetLoader = new AssetLoaderClass(
                 nuxtConfig.publicRuntimeConfig.API,
-                'dist'
+                moduleOptions.destination,
+                moduleOptions.chunkSize,
+                moduleOptions.payloadFileName,
+                moduleOptions.payloadFilePath,
             );
 
         }
 
-        this.nuxt.hook('generate:page', async ({route, html}) => {
-
-            await AssetLoader.collectPageAssets(route, html);
-
-        });
-
         this.nuxt.hook("generate:done", async (generator, errors) => {
 
-            await AssetLoader.downloadAssets();
+            AssetLoader.collect();
+
+            await AssetLoader.download();
 
             if (errors.length > 0) {
 
