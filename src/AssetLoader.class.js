@@ -49,7 +49,10 @@ export default class AssetLoader {
     extractAssetPathsFromPayload(payloadString) {
         const getAssetPathsRegex = /\/(?:assets|imager)(.[^"]*)/g;
         const matches = [...payloadString.matchAll(getAssetPathsRegex)];
-        const paths = matches.map(match => match[0]);
+        const paths = matches.map(match => {
+            const path = match[0].replaceAll('"', '').replaceAll(',', '');
+            return path;
+        });
         return paths;
     }
 
