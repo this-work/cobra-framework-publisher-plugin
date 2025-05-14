@@ -90,8 +90,8 @@ export default class AssetLoader {
      * @private
      */
     extractAssetPathsFromPayload(payloadString) {
-        const getAssetPathsRegex = /\/(?:assets|imager)(.[^"]*)/g;
-        const matches = [...payloadString.matchAll(getAssetPathsRegex)];
+        const assetPathRegex = /\/(?:assets|imager)\/[^"]+/g;
+        const matches = [...payloadString.matchAll(assetPathRegex)];
         const paths = matches.map(match => {
             const path = match[0].replaceAll('"', '').replaceAll(',', '');
             return path;
