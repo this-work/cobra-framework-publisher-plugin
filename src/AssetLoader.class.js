@@ -74,7 +74,6 @@ export default class AssetLoader {
         const payloadDir = path.join(process.env.PWD, `${this.assetDestination}${this.payloadFilePath}`);
         const payloadContents = this.getPayloads(payloadDir);
         const assets = payloadContents.flatMap(content => this.extractAssetPathsFromPayload(content));
-        this.logger.debug(`Found ${assets.length} asset paths`, JSON.stringify(assets.sort(), null, 2));
         const totalBeforeDedup = assets.length;
         this.assetList = [...new Set(assets)];
         const duplicatesRemoved = totalBeforeDedup - this.assetList.length;
@@ -146,7 +145,6 @@ export default class AssetLoader {
         }
 
         const { assetList, api, assetDestination, concurrentDownloads } = this;
-        let downloadedAssets = 0;
         const totalAssetCount = assetList.length;
         const progressInterval = Math.ceil(totalAssetCount * 0.05);
         const remainingAssets = new Set(assetList);
@@ -183,36 +181,15 @@ export default class AssetLoader {
                     const assetFilePath = path.join(assetDir, assetName);
                     await pipeline(response, fs.createWriteStream(assetFilePath));
 
-                    downloadedAssets++;
                     remainingAssets.delete(asset);
-
-                    // Progress percentage threshold when log detailed status of remaining downloads
-                    const detailedThreshold = 99;
-                    if (
-                        downloadedAssets % progressInterval === 0 ||
-                        downloadedAssets === totalAssetCount ||
-                        (downloadedAssets / totalAssetCount) * 100 >= detailedThreshold
-                    ) {
-                        const rawPercentage = (downloadedAssets / totalAssetCount) * 100;
-                        const percentage =
-                            rawPercentage >= detailedThreshold ? rawPercentage.toFixed(3) : Math.round(rawPercentage);
-                        const progressMessage = `Downloaded ${percentage}% of all assets (${downloadedAssets}/${totalAssetCount})`;
+                    const completedCount = totalAssetCount - remainingAssets.size;
+                    if (completedCount % progressInterval === 0 || completedCount === totalAssetCount) {
+                        const percentage = Math.round((completedCount / totalAssetCount) * 100);
+                        const progressMessage = `Downloaded ${percentage}% of all assets (${completedCount}/${totalAssetCount})`;
                         this.logger.info(progressMessage);
-
-                        if (rawPercentage >= detailedThreshold) {
-                            this.logger.debug(`Remaining assets (${remainingAssets.size}):`);
-                            for (const remainingAsset of remainingAssets) {
-                                this.logger.debug(`  - ${remainingAsset}`);
-                            }
-                        }
                     }
                 } catch (error) {
-                    const errorMessage = `Failed to download asset: ${asset} - ${error.message}`;
-                    this.logger.error(errorMessage, {
-                        status: error.response?.status,
-                        networkError: error.request ? error.message : undefined,
-                        stack: !error.response && !error.request ? error.stack : undefined
-                    });
+                    this.logger.error(`Failed to download asset: ${asset} - ${error.message}`);
                     throw error;
                 }
             });
