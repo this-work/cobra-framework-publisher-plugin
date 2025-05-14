@@ -69,10 +69,9 @@ export default class AssetLoader {
         // Process each file in directory
         for (const file of files) {
             const filePath = path.join(dir, file);
-            const fileStat = fs.statSync(filePath);
 
             // Recursively search subdirectories
-            if (fileStat.isDirectory()) {
+            if (fs.statSync(filePath).isDirectory()) {
                 const subDirContents = this.getPayloads(filePath);
                 payloadContents.push(...subDirContents);
                 continue;
@@ -84,7 +83,7 @@ export default class AssetLoader {
             }
 
             // Read payload file content (assume JSON format)
-            const payloadJsonRaw = fs.readFileSync(filePath);
+            const payloadJsonRaw = fs.readFileSync(filePath, 'utf8');
             // Convert unicode forward slashes (\u002F) to regular forward slashes (/)
             const payloadJson = payloadJsonRaw.replaceAll('\\u002F', '/');
             payloadContents.push(payloadJson);
@@ -121,7 +120,7 @@ export default class AssetLoader {
                     // Fetch asset from API
                     const response = await fetch(`${api}${asset}`);
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status} for asset: ${asset}`);
+                        throw new Error(`Bad response! status: ${response.status} for asset: ${asset}`);
                     }
 
                     // Ensure asset directory exists
