@@ -157,19 +157,18 @@ export default class AssetLoader {
                 const assetPath = splitAssetArray.join('/');
 
                 try {
-                    this.logger.debug(`Starting download for asset: ${asset}`);
                     const response = await ofetch(`${api}${asset}`, {
                         responseType: 'stream',
-                        timeout: 30000, // 30 second timeout per request
+                        timeout: 60000, // 1 minute timeout per request
                         retry: 3,
                         onRequest: ({ request }) => {
-                            this.logger.debug(`Starting download: ${request}`);
+                            this.logger.debug(`Started download: ${request}`);
                         },
                         onResponse: ({ request, response }) => {
                             this.logger.debug(`Completed download: ${request} (${response.status})`);
                         },
                         onRequestError: ({ request, error }) => {
-                            this.logger.error(`Request error for ${request}: ${error.message}`);
+                            this.logger.error(`Request error: ${request}: ${error.message}`);
                         }
                     });
 
