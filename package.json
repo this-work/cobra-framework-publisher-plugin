@@ -23,7 +23,7 @@
     "dependencies": {
         "consola": "^3.4.2",
         "fs-extra": "^11.3.0",
-        "node-fetch": "^3.3.2",
+        "ofetch": "^1.4.1",
         "p-limit": "^6.2.0",
         "path": "^0.12.7"
     }

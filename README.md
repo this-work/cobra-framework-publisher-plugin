@@ -31,7 +31,7 @@ modules: [
             destination: 'dist',
 
             // Number of assets to download concurrently
-            chunkSize: 250,
+            concurrentDownloads: 200,
 
             // Name of the Nuxt payload files to scan
             payloadFileName: 'payload.js',
