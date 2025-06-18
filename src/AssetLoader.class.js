@@ -14,7 +14,8 @@ export default class AssetLoader {
      * @param {number} [config.concurrentDownloads=200] - Number of assets to download concurrently
      * @param {string} [config.payloadFileName="payload.js"] - Name of the Nuxt payload files to scan
      * @param {string} [config.payloadFilePath="/_nuxt/static"] - Path where payload files are located
-     * @param {boolean} [config.enableDebugFile=false] - Whether to create and write to the debug file
+     * @param {number} [config.logLevel=3] - Log level (see: https://github.com/unjs/consola#log-level)
+     * @param {boolean} [config.enableDebugFile=false] - Whether to create and write debug file
      */
     constructor({
         host,
@@ -22,7 +23,8 @@ export default class AssetLoader {
         concurrentDownloads = 200,
         payloadFileName = 'payload.js',
         payloadFilePath = '/_nuxt/static',
-        enableDebugFile = false
+        enableDebugFile = false,
+        logLevel = 3
     }) {
         this.api = host;
         this.assetDestination = destination;
@@ -34,8 +36,9 @@ export default class AssetLoader {
         this.logFilePath = path.join(process.env.PWD, `${this.assetDestination}/publisher.log`);
         this.enableDebugFile = enableDebugFile;
         this.debugFilePath = enableDebugFile
-            ? path.join(process.env.PWD, `${this.assetDestination}/collected-urls-debug.txt`)
+            ? path.join(process.env.PWD, `${this.assetDestination}/debug.log`)
             : null;
+        this.logLevel = logLevel;
 
         this.setupLogging();
     }
@@ -47,12 +50,12 @@ export default class AssetLoader {
     setupLogging() {
         // Create a new consola instance with both file and stdout logging
         this.logger = createConsola({
-            level: 4, // Keep main level at 4 to allow debug logs
+            level: this.logLevel,
             reporters: [
                 // Use default fancy reporter for stdout
                 {
                     log: logObj => {
-                        // Only show non-debug messages in console
+                        // Only output messages below debug level in console
                         if (logObj.level <= 3) {
                             // Let consola handle the fancy formatting
                             console[logObj.type]?.(`[${this.logPrefix}]`, ...logObj.args) ||
