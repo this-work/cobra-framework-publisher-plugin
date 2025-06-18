@@ -21,6 +21,7 @@ let assetLoader = null;
  * @param {number} [moduleOptions.concurrentDownloads] - Number of assets to download concurrently
  * @param {string} [moduleOptions.payloadFileName] - Name of the payload files to scan
  * @param {string} [moduleOptions.payloadFilePath] - Path where payload files are located
+ * @param {boolean} [moduleOptions.enableDebugFile] - Enable debug file
  * @returns {Promise<void>}
  */
 export default async function (moduleOptions) {

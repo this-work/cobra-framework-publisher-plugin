@@ -14,13 +14,15 @@ export default class AssetLoader {
      * @param {number} [config.concurrentDownloads=200] - Number of assets to download concurrently
      * @param {string} [config.payloadFileName="payload.js"] - Name of the Nuxt payload files to scan
      * @param {string} [config.payloadFilePath="/_nuxt/static"] - Path where payload files are located
+     * @param {boolean} [config.enableDebugFile=false] - Whether to create and write to the debug file
      */
     constructor({
         host,
         destination = 'dist',
         concurrentDownloads = 200,
         payloadFileName = 'payload.js',
-        payloadFilePath = '/_nuxt/static'
+        payloadFilePath = '/_nuxt/static',
+        enableDebugFile = false
     }) {
         this.api = host;
         this.assetDestination = destination;
@@ -30,6 +32,10 @@ export default class AssetLoader {
         this.assetList = [];
         this.logPrefix = 'cobra-framework-publisher-plugin';
         this.logFilePath = path.join(process.env.PWD, `${this.assetDestination}/publisher.log`);
+        this.enableDebugFile = enableDebugFile;
+        this.debugFilePath = enableDebugFile
+            ? path.join(process.env.PWD, `${this.assetDestination}/collected-urls-debug.txt`)
+            : null;
 
         this.setupLogging();
     }
@@ -43,11 +49,14 @@ export default class AssetLoader {
         this.logger = createConsola({
             level: 4, // Keep main level at 4 to allow debug logs
             reporters: [
+                // Use default fancy reporter for stdout
                 {
                     log: logObj => {
                         // Only show non-debug messages in console
                         if (logObj.level <= 3) {
-                            console.log(`[${this.logPrefix}] ${logObj.type}:`, ...logObj.args);
+                            // Let consola handle the fancy formatting
+                            console[logObj.type]?.(`[${this.logPrefix}]`, ...logObj.args) ||
+                                console.log(`[${this.logPrefix}] ${logObj.type}:`, ...logObj.args);
                         }
                     }
                 },
@@ -71,14 +80,66 @@ export default class AssetLoader {
     collect() {
         this.logger.info(`Log file location: ${this.logFilePath}`);
 
+        if (this.enableDebugFile) {
+            this.logger.info(`Debug URL collection file: ${this.debugFilePath}`);
+            // Clear the debug file at start
+            fs.writeFileSync(this.debugFilePath, `Starting URL collection at ${new Date().toISOString()}\n`);
+        }
+
         const payloadDir = path.join(process.env.PWD, `${this.assetDestination}${this.payloadFilePath}`);
-        const payloadContents = this.getPayloads(payloadDir);
-        const assets = payloadContents.flatMap(content => this.extractAssetPathsFromPayload(content));
-        const totalBeforeDedup = assets.length;
-        this.assetList = [...new Set(assets)];
+        const assetSet = new Set();
+        let totalBeforeDedup = 0;
+        let filesProcessed = 0;
+
+        this.processPayloadsStreaming(payloadDir, (payloadContent, filePath) => {
+            filesProcessed++;
+            this.logger.debug(`Processing payload file ${filesProcessed}: ${filePath}`);
+
+            if (this.enableDebugFile) {
+                fs.appendFileSync(this.debugFilePath, `\n--- Processing file ${filesProcessed}: ${filePath} ---\n`);
+            }
+
+            const assets = this.extractAssetPathsFromPayload(payloadContent);
+            totalBeforeDedup += assets.length;
+
+            // Log each asset as we collect it
+            assets.forEach(asset => {
+                assetSet.add(asset);
+                if (this.enableDebugFile) {
+                    fs.appendFileSync(this.debugFilePath, `${asset}\n`);
+                }
+            });
+
+            if (this.enableDebugFile) {
+                fs.appendFileSync(
+                    this.debugFilePath,
+                    `File processed. Found ${assets.length} assets. Total unique so far: ${assetSet.size}\n`
+                );
+            }
+
+            // Log progress every 10 files
+            if (filesProcessed % 10 === 0) {
+                this.logger.info(
+                    `Processed ${filesProcessed} payload files. Found ${assetSet.size} unique assets so far.`
+                );
+            }
+        });
+
+        this.assetList = Array.from(assetSet);
         const duplicatesRemoved = totalBeforeDedup - this.assetList.length;
+
+        // Final debug log
+        if (this.enableDebugFile) {
+            fs.appendFileSync(this.debugFilePath, `\n=== COLLECTION COMPLETE ===\n`);
+            fs.appendFileSync(this.debugFilePath, `Total payload files processed: ${filesProcessed}\n`);
+            fs.appendFileSync(this.debugFilePath, `Total URLs before dedup: ${totalBeforeDedup}\n`);
+            fs.appendFileSync(this.debugFilePath, `Unique URLs collected: ${this.assetList.length}\n`);
+            fs.appendFileSync(this.debugFilePath, `Duplicates removed: ${duplicatesRemoved}\n`);
+            fs.appendFileSync(this.debugFilePath, `Completed at: ${new Date().toISOString()}\n`);
+        }
+
         this.logger.info(
-            `Found ${this.assetList.length} unique assets (${totalBeforeDedup} total paths, ${duplicatesRemoved} duplicates removed)`
+            `Found ${this.assetList.length} unique assets (${totalBeforeDedup} total, ${duplicatesRemoved} duplicates removed)`
         );
     }
 
@@ -99,14 +160,13 @@ export default class AssetLoader {
     }
 
     /**
-     * Recursively searches for payload files in the given directory and its subdirectories
+     * Processes payload files one by one without loading all content into memory
      * @param {string} dir - Directory path to search in
-     * @returns {string[]} Array of payload file contents
+     * @param {Function} callback - Function to call for each payload file content
      * @private
      */
-    getPayloads(dir) {
+    processPayloadsStreaming(dir, callback) {
         const files = fs.readdirSync(dir);
-        const payloadContents = [];
 
         // Process each file in directory
         for (const file of files) {
@@ -114,8 +174,7 @@ export default class AssetLoader {
 
             // Recursively search subdirectories
             if (fs.statSync(filePath).isDirectory()) {
-                const subDirContents = this.getPayloads(filePath);
-                payloadContents.push(...subDirContents);
+                this.processPayloadsStreaming(filePath, callback);
                 continue;
             }
 
@@ -124,14 +183,12 @@ export default class AssetLoader {
                 continue;
             }
 
-            // Read payload file content (assume JSON format)
+            // Read and process payload file immediately (don't accumulate)
             const payloadJsonRaw = fs.readFileSync(filePath, 'utf8');
             // Convert unicode forward slashes (\u002F) to regular forward slashes (/)
             const payloadJson = payloadJsonRaw.replaceAll('\\u002F', '/');
-            payloadContents.push(payloadJson);
+            callback(payloadJson, filePath);
         }
-
-        return payloadContents;
     }
 
     /**
@@ -147,7 +204,8 @@ export default class AssetLoader {
         const { assetList, api, assetDestination, concurrentDownloads } = this;
         const totalAssetCount = assetList.length;
         const progressInterval = Math.ceil(totalAssetCount * 0.05);
-        const remainingAssets = new Set(assetList);
+        let completedCount = 0;
+        const failedAssets = [];
 
         const limit = pLimit(concurrentDownloads);
         const downloadPromises = assetList.map(asset => {
@@ -180,15 +238,14 @@ export default class AssetLoader {
                     const assetFilePath = path.join(assetDir, assetName);
                     await pipeline(response, fs.createWriteStream(assetFilePath));
 
-                    remainingAssets.delete(asset);
-                    const completedCount = totalAssetCount - remainingAssets.size;
+                    completedCount++;
                     if (completedCount % progressInterval === 0 || completedCount === totalAssetCount) {
-                        const percentage = Math.round((completedCount / totalAssetCount) * 100);
-                        const progressMessage = `Downloaded ${percentage}% of all assets (${completedCount}/${totalAssetCount})`;
-                        this.logger.info(progressMessage);
+                        const pctage = Math.round((completedCount / totalAssetCount) * 100);
+                        this.logger.info(`Downloaded ${pctage}% of all assets (${completedCount}/${totalAssetCount})`);
                     }
                 } catch (error) {
                     this.logger.error(`Failed to download asset: ${asset} - ${error.message}`);
+                    failedAssets.push(asset);
                     throw error;
                 }
             });
@@ -196,17 +253,17 @@ export default class AssetLoader {
 
         // Wait for all concurrent downloads to complete
         try {
-            this.logger.info(
-                `Starting download of ${totalAssetCount} assets (concurrency limit: ${concurrentDownloads})`
-            );
+            this.logger.info(`Starting download of ${totalAssetCount} assets (concurrency: ${concurrentDownloads})`);
             await Promise.all(downloadPromises);
             this.logger.success(`Downloaded all ${totalAssetCount} assets`);
         } catch (error) {
             this.logger.error(`Some downloads failed: ${error.message}`);
-            // Log all remaining assets that haven't been downloaded
-            this.logger.error(`Failed or stuck assets (${remainingAssets.size}):`);
-            for (const remainingAsset of remainingAssets) {
-                this.logger.error(`  - ${remainingAsset}`);
+            // Log all failed assets
+            if (failedAssets.length > 0) {
+                this.logger.error(`Failed assets (${failedAssets.length}):`);
+                for (const failedAsset of failedAssets) {
+                    this.logger.error(`  - ${failedAsset}`);
+                }
             }
             throw error;
         }

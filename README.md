@@ -1,8 +1,10 @@
 # Cobra-Framework Pubisher Plugin
+
 Nuxt module for a publish process. Requires a minimal version of nuxt 2.17+
 
 ### Requirements
-- Nuxt 2.17+
+
+* Nuxt 2.17+
 
 ### Usage in Nuxt
 
@@ -37,7 +39,10 @@ modules: [
             payloadFileName: 'payload.js',
 
             // Path where payload files are located
-            payloadFilePath: '/_nuxt/static'
+            payloadFilePath: '/_nuxt/static',
+
+            // Enable debug file
+            enableDebugFile: false
         }
     ]
 ]
