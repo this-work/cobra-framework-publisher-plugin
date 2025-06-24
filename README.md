@@ -42,7 +42,13 @@ modules: [
             payloadFilePath: '/_nuxt/static',
 
             // Enable debug file
-            enableDebugFile: false
+            enableDebugFile: false,
+
+            // Timeout in milliseconds for each asset download request (default: 3 minutes)
+            requestTimeout: 180000,
+
+            // Whether to continue execution when some downloads fail (true) or throw an error (false)
+            silentFail: true
         }
     ]
 ]

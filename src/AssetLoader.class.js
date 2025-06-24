@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import { ofetch } from 'ofetch';
 import pLimit from 'p-limit';
 import path from 'path';
+import { Transform } from 'stream';
 
 export default class AssetLoader {
     /**
@@ -16,6 +17,8 @@ export default class AssetLoader {
      * @param {string} [config.payloadFilePath="/_nuxt/static"] - Path where payload files are located
      * @param {number} [config.logLevel=3] - Log level (see: https://github.com/unjs/consola#log-level)
      * @param {boolean} [config.enableDebugFile=false] - Whether to create and write debug file
+     * @param {number} [config.requestTimeout=180000] - Timeout in milliseconds for each asset download request
+     * @param {boolean} [config.silentFail=true] - Whether to continue execution when some downloads fail (true) or throw an error (false)
      */
     constructor({
         host,
@@ -24,7 +27,9 @@ export default class AssetLoader {
         payloadFileName = 'payload.js',
         payloadFilePath = '/_nuxt/static',
         enableDebugFile = false,
-        logLevel = 3
+        logLevel = 3,
+        requestTimeout = 180000,
+        silentFail = true
     }) {
         this.api = host;
         this.assetDestination = destination;
@@ -39,6 +44,8 @@ export default class AssetLoader {
             ? path.join(process.env.PWD, `${this.assetDestination}/debug.log`)
             : null;
         this.logLevel = logLevel;
+        this.requestTimeout = requestTimeout;
+        this.silentFail = silentFail;
 
         this.setupLogging();
     }
@@ -51,28 +58,22 @@ export default class AssetLoader {
         // Create a new consola instance with both file and stdout logging
         this.logger = createConsola({
             level: this.logLevel,
-            reporters: [
-                // Use default fancy reporter for stdout
-                {
-                    log: logObj => {
-                        // Only output messages below debug level in console
-                        if (logObj.level <= 3) {
-                            // Let consola handle the fancy formatting
-                            console[logObj.type]?.(`[${this.logPrefix}]`, ...logObj.args) ||
-                                console.log(`[${this.logPrefix}] ${logObj.type}:`, ...logObj.args);
-                        }
-                    }
-                },
-                {
-                    log: logObj => {
-                        const timestamp = new Date().toISOString();
-                        const message = `[${timestamp}] ${logObj.type}: ${logObj.args.join(' ')}\n`;
-                        fs.appendFileSync(this.logFilePath, message);
-                    }
-                }
-            ]
+            fancy: true, 
+            formatOptions: {
+                date: true,
+                colors: true,
+                compact: false
+            }
         });
 
+        // Add file reporter while keeping default fancy reporter
+        this.logger.addReporter({
+            log: logObj => {
+                const timestamp = new Date().toISOString();
+                const message = `[${timestamp}] ${logObj.type}: ${logObj.args.join(' ')}\n`;
+                fs.appendFileSync(this.logFilePath, message);
+            }
+        });
         // Ensure log file path exists
         fs.mkdirSync(path.dirname(this.logFilePath), { recursive: true });
     }
@@ -204,11 +205,20 @@ export default class AssetLoader {
             return;
         }
 
-        const { assetList, api, assetDestination, concurrentDownloads } = this;
+        const { assetList, api, assetDestination, concurrentDownloads, silentFail } = this;
         const totalAssetCount = assetList.length;
-        const progressInterval = Math.ceil(totalAssetCount * 0.05);
+        const progressInterval = Math.ceil(totalAssetCount * 0.01);
         let completedCount = 0;
+        let totalBytesDownloaded = 0;
         const failedAssets = [];
+
+        // Helper function to format bytes into human readable format
+        const formatBytes = (bytes) => {
+            if (bytes === 0) return '0 B';
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+        };
 
         const limit = pLimit(concurrentDownloads);
         const downloadPromises = assetList.map(asset => {
@@ -220,7 +230,7 @@ export default class AssetLoader {
                 try {
                     const response = await ofetch(`${api}${asset}`, {
                         responseType: 'stream',
-                        timeout: 60000, // 1 minute timeout per request
+                        timeout: this.requestTimeout,
                         retry: 3,
                         onRequest: ({ request }) => {
                             this.logger.debug(`Started download: ${request}`);
@@ -237,19 +247,37 @@ export default class AssetLoader {
                     const assetDir = path.join(process.env.PWD, `${assetDestination}${assetPath}`);
                     fs.mkdirSync(assetDir, { recursive: true });
 
-                    // Stream fetched asset to local file
+                    // Stream fetched asset to local file and track size
                     const assetFilePath = path.join(assetDir, assetName);
-                    await pipeline(response, fs.createWriteStream(assetFilePath));
+                    let assetSize = 0;
+
+                    // Stream the response through a transform to track size, then write to file
+                    await pipeline(
+                        response,
+                        new Transform({
+                            transform(chunk, encoding, callback) {
+                                assetSize += chunk.length;
+                                callback(null, chunk);
+                            }
+                        }),
+                        fs.createWriteStream(assetFilePath)
+                    );
+
+                    totalBytesDownloaded += assetSize;
 
                     completedCount++;
                     if (completedCount % progressInterval === 0 || completedCount === totalAssetCount) {
                         const pctage = Math.round((completedCount / totalAssetCount) * 100);
-                        this.logger.info(`Downloaded ${pctage}% of all assets (${completedCount}/${totalAssetCount})`);
+                        this.logger.info(
+                            `Downloaded ${pctage}% of all assets (${completedCount}/${totalAssetCount}, ${formatBytes(totalBytesDownloaded)} total)`
+                        );
                     }
+
+                    return { success: true, asset, size: assetSize };
                 } catch (error) {
                     this.logger.error(`Failed to download asset: ${asset} - ${error.message}`);
                     failedAssets.push(asset);
-                    throw error;
+                    return { success: false, asset, error: error.message };
                 }
             });
         });
@@ -257,18 +285,30 @@ export default class AssetLoader {
         // Wait for all concurrent downloads to complete
         try {
             this.logger.info(`Starting download of ${totalAssetCount} assets (concurrency: ${concurrentDownloads})`);
-            await Promise.all(downloadPromises);
-            this.logger.success(`Downloaded all ${totalAssetCount} assets`);
-        } catch (error) {
-            this.logger.error(`Some downloads failed: ${error.message}`);
-            // Log all failed assets
-            if (failedAssets.length > 0) {
+            const results = await Promise.all(downloadPromises);
+            
+            // Count successful and failed downloads
+            const successfulDownloads = results.filter(r => r.success).length;
+            const failedDownloads = results.filter(r => !r.success).length;
+            
+            if (failedDownloads > 0) {
+                this.logger.error(`Completed with errors: ${successfulDownloads} successful, ${failedDownloads} failed`);
+                this.logger.error(`Total data downloaded: ${formatBytes(totalBytesDownloaded)}`);
                 this.logger.error(`Failed assets (${failedAssets.length}):`);
                 for (const failedAsset of failedAssets) {
                     this.logger.error(`  - ${failedAsset}`);
                 }
+                if (!silentFail) {
+                    throw new Error(`Some downloads failed (${failedDownloads} of ${totalAssetCount})`);
+                }
+            } else {
+                this.logger.success(`Successfully downloaded all ${totalAssetCount} assets (${formatBytes(totalBytesDownloaded)})`);
             }
-            throw error;
+        } catch (error) {
+            this.logger.error(`Download process error: ${error.message}`);
+            if (!silentFail) {
+                throw error;
+            }
         }
     }
 }
