@@ -48,7 +48,17 @@ modules: [
             requestTimeout: 180000,
 
             // Whether to continue execution when some downloads fail (true) or throw an error (false)
-            silentFail: true
+            silentFail: true,
+
+            // Optional function that returns an array of asset URLs to always download
+            provideAssets: () => {
+                return [
+                    '/assets/image1.jpg',
+                    '/assets/image2.jpg'
+                    'https://cdn.example.com/images/hero.jpg',
+                    'https://assets.example.com/videos/intro.mp4',
+                    'https://static.example.com/documents/brochure.pdf'
+            }
         }
     ]
 ]

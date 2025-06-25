@@ -19,6 +19,7 @@ export default class AssetLoader {
      * @param {boolean} [config.enableDebugFile=false] - Whether to create and write debug file
      * @param {number} [config.requestTimeout=180000] - Timeout in milliseconds for each asset download request
      * @param {boolean} [config.silentFail=true] - Whether to continue execution when some downloads fail (true) or throw an error (false)
+     * @param {Function} [config.provideAssets] - Optional function that returns an array of asset URLs to download
      */
     constructor({
         host,
@@ -29,7 +30,8 @@ export default class AssetLoader {
         enableDebugFile = false,
         logLevel = 3,
         requestTimeout = 180000,
-        silentFail = true
+        silentFail = true,
+        provideAssets = null
     }) {
         this.api = host;
         this.assetDestination = destination;
@@ -46,6 +48,7 @@ export default class AssetLoader {
         this.logLevel = logLevel;
         this.requestTimeout = requestTimeout;
         this.silentFail = silentFail;
+        this.provideAssets = provideAssets;
 
         this.setupLogging();
     }
@@ -80,6 +83,7 @@ export default class AssetLoader {
 
     /**
      * Initiates the collection of assets by searching through payload files in the specified directory structure
+     * and collection of assets from the provideAssets function if provided
      */
     collect() {
         this.logger.info(`Log file location: ${this.logFilePath}`);
@@ -90,9 +94,40 @@ export default class AssetLoader {
             fs.writeFileSync(this.debugFilePath, `Starting URL collection at ${new Date().toISOString()}\n`);
         }
 
-        const payloadDir = path.join(process.env.PWD, `${this.assetDestination}${this.payloadFilePath}`);
         const assetSet = new Set();
         let totalBeforeDedup = 0;
+
+        // Collect assets from provideAssets function if provided
+        if (typeof this.provideAssets === 'function') {
+            try {
+                this.logger.info('Collecting provided assets...');
+                const providedAssets = this.provideAssets();
+                if (!Array.isArray(providedAssets)) {
+                    throw new Error('provideAssets function must return an array of strings');
+                }
+
+                providedAssets.forEach(asset => {
+                    if (typeof asset !== 'string') {
+                        this.logger.warn(`Skipping invalid asset URL from provideAssets: ${asset}`);
+                        return;
+                    }
+                    assetSet.add(asset);
+                    if (this.enableDebugFile) {
+                        fs.appendFileSync(this.debugFilePath, `Collected provided asset: ${asset}\n`);
+                    }
+                });
+
+                totalBeforeDedup += providedAssets.length;
+                this.logger.info(`Collected ${providedAssets.length} provided assets`);
+            } catch (error) {
+                this.logger.error(`Error collecting provided assets: ${error.message}`);
+                if (!this.silentFail) {
+                    throw error;
+                }
+            }
+        }
+
+        const payloadDir = path.join(process.env.PWD, `${this.assetDestination}${this.payloadFilePath}`);
         let filesProcessed = 0;
 
         this.processPayloadsStreaming(payloadDir, (payloadContent, filePath) => {

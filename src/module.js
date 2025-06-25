@@ -23,6 +23,7 @@ let assetLoader = null;
  * @param {string} [moduleOptions.payloadFilePath] - Path where payload files are located
  * @param {number} [moduleOptions.logLevel] - Log level (see: https://github.com/unjs/consola#log-level)
  * @param {boolean} [moduleOptions.enableDebugFile] - Enable debug file
+ * @param {Function} [moduleOptions.provideAssets] - Optional function that returns an array of asset URLs to alwaysdownload
  * @returns {Promise<void>}
  */
 export default async function (moduleOptions) {
