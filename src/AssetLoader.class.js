@@ -266,34 +266,41 @@ export default class AssetLoader {
         const limit = pLimit(concurrentDownloads);
         const downloadPromises = assetList.map(asset => {
             return limit(async () => {
-                const splitAssetArray = asset.split('/');
-                const assetName = splitAssetArray.pop();
-                const assetPath = splitAssetArray.join('/');
-
                 try {
                     const isAbsoluteURL = asset.startsWith('http://') || asset.startsWith('https://');
                     const requestURL = isAbsoluteURL ? asset : `${api}${asset}`;
+
+                    // Extract the path for filesystem storage
+                    const assetPathForFS = isAbsoluteURL
+                        ? asset.replace(/^https?:\/\/[^/]+\//, '') // Remove protocol and domain
+                        : asset.replace(/^\//, ''); // Remove leading slash for relative paths
+
+                    // Split the path into directory and filename
+                    const splitAssetArray = assetPathForFS.split('/');
+                    const assetName = splitAssetArray.pop();
+                    const assetPath = splitAssetArray.join('/');
+                    const assetFilePath = path.join(assetDir, assetName);
+
+                    // Ensure asset directory exists
+                    const assetDir = path.join(process.env.PWD, `${assetDestination}/${assetPath}`);
+                    fs.mkdirSync(assetDir, { recursive: true });
+
                     const response = await ofetch(requestURL, {
                         responseType: 'stream',
                         timeout: this.requestTimeout,
                         retry: 3,
                         onRequest: ({ request }) => {
-                            this.logger.debug(`Started download: ${request}`);
+                            this.logger.debug(`Started download: ${request} → ${assetFilePath}`);
                         },
                         onResponse: ({ request, response }) => {
-                            this.logger.debug(`Completed download: ${request} (${response.status})`);
+                            this.logger.debug(`Completed download: ${request} (${response.status}) → ${assetFilePath}`);
                         },
                         onRequestError: ({ request, error }) => {
                             this.logger.error(`Request error: ${request}: ${error.message}`);
                         }
                     });
 
-                    // Ensure asset directory exists
-                    const assetDir = path.join(process.env.PWD, `${assetDestination}${assetPath}`);
-                    fs.mkdirSync(assetDir, { recursive: true });
-
                     // Stream fetched asset to local file and track size
-                    const assetFilePath = path.join(assetDir, assetName);
                     let assetSize = 0;
 
                     // Stream the response through a transform to track size, then write to file
