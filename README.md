@@ -51,13 +51,15 @@ modules: [
             silentFail: true,
 
             // Optional function that returns an array of asset URLs to always download
-            provideAssets: () => {
+            // Can be synchronous or async, supports relative and absolute URLs
+            provideAssets: (nuxtContext) => {
+                // Example of a synchronous function
                 return [
                     '/assets/image1.jpg',
-                    '/assets/image2.jpg'
+                    '/assets/image2.jpg',
                     'https://cdn.example.com/images/hero.jpg',
                     'https://assets.example.com/videos/intro.mp4',
-                    'https://static.example.com/documents/brochure.pdf'
+                ];
             }
         }
     ]

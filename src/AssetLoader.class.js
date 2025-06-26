@@ -10,6 +10,7 @@ export default class AssetLoader {
     /**
      * Creates a new AssetLoader instance
      * @param {Object} config - Configuration object
+     * @param {Object} [config.nuxtContext] - Nuxt context object
      * @param {string} config.host - The API host URL where assets will be downloaded from
      * @param {string} [config.destination="dist"] - The destination directory for downloaded assets
      * @param {number} [config.concurrentDownloads=200] - Number of assets to download concurrently
@@ -19,9 +20,10 @@ export default class AssetLoader {
      * @param {boolean} [config.enableDebugFile=false] - Whether to create and write debug file
      * @param {number} [config.requestTimeout=180000] - Timeout in milliseconds for each asset download request
      * @param {boolean} [config.silentFail=true] - Whether to continue execution when some downloads fail (true) or throw an error (false)
-     * @param {Function} [config.provideAssets] - Optional function that returns an array of asset URLs to download
+     * @param {Function} [config.provideAssets] - Optional function that returns an array or promise of asset URLs to always download
      */
     constructor({
+        nuxtContext = null,
         host,
         destination = 'dist',
         concurrentDownloads = 200,
@@ -31,7 +33,7 @@ export default class AssetLoader {
         logLevel = 3,
         requestTimeout = 180000,
         silentFail = true,
-        provideAssets = null
+        provideAssets = null,
     }) {
         this.api = host;
         this.assetDestination = destination;
@@ -49,7 +51,7 @@ export default class AssetLoader {
         this.requestTimeout = requestTimeout;
         this.silentFail = silentFail;
         this.provideAssets = provideAssets;
-
+        this.nuxtContext = nuxtContext;
         this.setupLogging();
     }
 
@@ -61,7 +63,7 @@ export default class AssetLoader {
         // Create a new consola instance with both file and stdout logging
         this.logger = createConsola({
             level: this.logLevel,
-            fancy: true, 
+            fancy: true,
             formatOptions: {
                 date: true,
                 colors: true,
@@ -84,8 +86,9 @@ export default class AssetLoader {
     /**
      * Initiates the collection of assets by searching through payload files in the specified directory structure
      * and collection of assets from the provideAssets function if provided
+     * @returns {Promise<void>}
      */
-    collect() {
+    async collect() {
         this.logger.info(`Log file location: ${this.logFilePath}`);
 
         if (this.enableDebugFile) {
@@ -101,7 +104,14 @@ export default class AssetLoader {
         if (typeof this.provideAssets === 'function') {
             try {
                 this.logger.info('Collecting provided assets...');
-                const providedAssets = this.provideAssets();
+                let providedAssets;
+                try {
+                    // Handle both async and sync functions
+                    providedAssets = await Promise.resolve(this.provideAssets(this.nuxtContext));
+                } catch (callError) {
+                    throw new Error(`Failed to execute provideAssets function: ${callError.message}`);
+                }
+
                 if (!Array.isArray(providedAssets)) {
                     throw new Error('provideAssets function must return an array of strings');
                 }
@@ -121,9 +131,7 @@ export default class AssetLoader {
                 this.logger.info(`Collected ${providedAssets.length} provided assets`);
             } catch (error) {
                 this.logger.error(`Error collecting provided assets: ${error.message}`);
-                if (!this.silentFail) {
-                    throw error;
-                }
+                throw error;
             }
         }
 
@@ -321,11 +329,11 @@ export default class AssetLoader {
         try {
             this.logger.info(`Starting download of ${totalAssetCount} assets (concurrency: ${concurrentDownloads})`);
             const results = await Promise.all(downloadPromises);
-            
+
             // Count successful and failed downloads
             const successfulDownloads = results.filter(r => r.success).length;
             const failedDownloads = results.filter(r => !r.success).length;
-            
+
             if (failedDownloads > 0) {
                 this.logger.error(`Completed with errors: ${successfulDownloads} successful, ${failedDownloads} failed`);
                 this.logger.error(`Total data downloaded: ${formatBytes(totalBytesDownloaded)}`);

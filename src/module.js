@@ -23,32 +23,31 @@ let assetLoader = null;
  * @param {string} [moduleOptions.payloadFilePath] - Path where payload files are located
  * @param {number} [moduleOptions.logLevel] - Log level (see: https://github.com/unjs/consola#log-level)
  * @param {boolean} [moduleOptions.enableDebugFile] - Enable debug file
- * @param {Function} [moduleOptions.provideAssets] - Optional function that returns an array of asset URLs to alwaysdownload
+ * @param {Function} [moduleOptions.provideAssets] - Optional function that returns an array or promise of asset URLs to always download
  * @returns {Promise<void>}
  */
 export default async function (moduleOptions) {
     const host = this.nuxt.options.publicRuntimeConfig.API;
-
     if (!host?.length) {
         consola.warn('No API configured');
         return;
     }
 
     if (!assetLoader) {
-        assetLoader = new AssetLoader({ host, ...moduleOptions });
+        assetLoader = new AssetLoader({ nuxtContext: this.nuxt, host, ...moduleOptions });
     }
 
     this.nuxt.hook('generate:done', async (generator, errors) => {
-        assetLoader.collect();
+        await assetLoader.collect();
         await assetLoader.download();
 
         const logPath = `${generator.options.generate.dir}/${errors.length > 0 ? 'error' : 'success'}.log`;
         const logContent =
             errors.length > 0
                 ? JSON.stringify({
-                      routes: Array.from(generator.generatedRoutes),
-                      errors: errors.map(({ type, route, error }) => ({ type, route, error: error.toString() }))
-                  })
+                    routes: Array.from(generator.generatedRoutes),
+                    errors: errors.map(({ type, route, error }) => ({ type, route, error: error.toString() }))
+                })
                 : 'success';
         fs.writeFileSync(logPath, logContent);
     });
