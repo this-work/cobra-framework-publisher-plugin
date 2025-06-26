@@ -271,7 +271,9 @@ export default class AssetLoader {
                 const assetPath = splitAssetArray.join('/');
 
                 try {
-                    const response = await ofetch(`${api}${asset}`, {
+                    const isAbsoluteURL = asset.startsWith('http://') || asset.startsWith('https://');
+                    const requestURL = isAbsoluteURL ? asset : `${api}${asset}`;
+                    const response = await ofetch(requestURL, {
                         responseType: 'stream',
                         timeout: this.requestTimeout,
                         retry: 3,
