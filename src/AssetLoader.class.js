@@ -279,11 +279,12 @@ export default class AssetLoader {
                     const splitAssetArray = assetPathForFS.split('/');
                     const assetName = splitAssetArray.pop();
                     const assetPath = splitAssetArray.join('/');
-                    const assetFilePath = path.join(assetDir, assetName);
 
                     // Ensure asset directory exists
                     const assetDir = path.join(process.env.PWD, `${assetDestination}/${assetPath}`);
                     fs.mkdirSync(assetDir, { recursive: true });
+
+                    const assetFilePath = path.join(assetDir, assetName);
 
                     const response = await ofetch(requestURL, {
                         responseType: 'stream',
