@@ -38,6 +38,11 @@ export default async function (moduleOptions) {
     }
 
     this.nuxt.hook('generate:done', async (generator, errors) => {
+        if (errors.length > 0) {
+            // Error handled by app/modules/logging-generation.js inside app project
+            return
+        }
+
         await assetLoader.collect();
         await assetLoader.download();
 
