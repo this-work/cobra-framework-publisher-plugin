@@ -39,21 +39,19 @@ export default async function (moduleOptions) {
 
     this.nuxt.hook('generate:done', async (generator, errors) => {
         if (errors.length > 0) {
-            // Error handled by app/modules/logging-generation.js inside app project
-            return
+            const errorLogPath = `${generator.options.generate.dir}/error.log`;
+            const errorLogContent = JSON.stringify({
+                routes: Array.from(generator.generatedRoutes),
+                errors: errors.map(({ type, route, error }) => ({ type, route, error: error.toString() }))
+            });
+            fs.appendFileSync(errorLogPath, errorLogContent);
+            throw new Error(`Error during generation. Error log written to: ${errorLogPath}`);
         }
 
         await assetLoader.collect();
         await assetLoader.download();
 
-        const logPath = `${generator.options.generate.dir}/${errors.length > 0 ? 'error' : 'success'}.log`;
-        const logContent =
-            errors.length > 0
-                ? JSON.stringify({
-                    routes: Array.from(generator.generatedRoutes),
-                    errors: errors.map(({ type, route, error }) => ({ type, route, error: error.toString() }))
-                })
-                : 'success';
-        fs.writeFileSync(logPath, logContent);
+        const successLogPath = `${generator.options.generate.dir}/success.log`;
+        fs.appendFileSync(successLogPath, 'success');
     });
 }
